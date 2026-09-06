@@ -216,12 +216,19 @@ def get_recent_invocations(
             message = event.get("message", "")
             timestamp = event.get("timestamp")
 
-            if "START RequestId:" in message:
+            # Only a START line that actually carries a request id opens an
+            # invocation. The log group also holds the function's own stdout, so
+            # a START-shaped line without one is ordinary output: treating it as
+            # a boundary would split the running invocation in two and emit a
+            # phantom one with no request id.
+            start_request_id = (
+                _token_after(message, "RequestId:") if "START RequestId:" in message else None
+            )
+            if start_request_id is not None:
                 if current_invocation:
                     invocations.append(current_invocation)
-                request_id = _token_after(message, "RequestId:")
                 current_invocation = {
-                    "request_id": request_id,
+                    "request_id": start_request_id,
                     "start_time": timestamp,
                     "logs": [message],
                 }

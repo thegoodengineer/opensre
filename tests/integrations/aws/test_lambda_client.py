@@ -262,20 +262,25 @@ def test_get_function_code_corrupt_zip(mock_lambda_client) -> None:
     assert "extract_error" in result["data"]
 
 
-def test_get_recent_invocations_start_line_without_a_value(mock_logs_client) -> None:
+def test_get_recent_invocations_valueless_start_line_is_not_a_boundary(mock_logs_client) -> None:
     # The log group also carries the function's own stdout, so a START-shaped
-    # line can arrive with no request id after the label.
+    # line can arrive with no request id after the label. It must not split the
+    # running invocation or open a second one with no request id.
     mock_logs_client.filter_log_events.return_value = {
         "events": [
-            {"timestamp": 1000, "message": "START RequestId: \n"},
-            {"timestamp": 1050, "message": "log line\n"},
+            {"timestamp": 1000, "message": "START RequestId: req1\n"},
+            {"timestamp": 1050, "message": "START RequestId: \n"},
+            {"timestamp": 1100, "message": "END RequestId: req1\n"},
         ]
     }
 
     result = get_recent_invocations("test-func")
 
     assert result["success"] is True
-    assert result["data"]["invocations"][0]["request_id"] is None
+    invocations = result["data"]["invocations"]
+    assert len(invocations) == 1
+    assert invocations[0]["request_id"] == "req1"
+    assert "START RequestId: \n" in invocations[0]["logs"]
 
 
 def test_get_recent_invocations_start_line_without_a_space(mock_logs_client) -> None:
